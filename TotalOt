@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>OT Dashboard</title>
+
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+
+  <!-- Print PDF -->
+  <style>
+    @media print {
+      aside, input, button {
+        display: none !important;
+      }
+      body {
+        background: white;
+      }
+    }
+  </style>
+</head>
+
+
+<body class="bg-gray-100">
+<div class="flex min-h-screen">
+
+
+  <!-- Sidebar -->
+  <aside class="w-64 bg-gradient-to-b from-blue-800 to-blue-600 text-white p-4">
+    <h2 class="text-xl font-bold mb-4">📊 Group B</h2>
+    <input id="search"
+      class="w-full p-2 rounded text-black"
+      placeholder="ค้นหาชื่อ..."
+      onkeyup="filterTable()">
+  </aside>
+
+
+  <!-- Main -->
+  <main class="flex-1 p-6">
+    <h1 class="text-2xl font-bold mb-6">OT. และ วันลา รายบุคคล 11 มีนาคม  - 10 เมษายน 2569</h1>
+
+
+    <!-- Summary -->
+    <div class="grid grid-cols-3 gap-4 mb-6">
+      <div class="bg-white p-4 rounded shadow">
+        <p>พนักงานทั้งหมด</p>
+        <p id="totalEmp" class="text-3xl font-bold">0</p>
+      </div>
+      <div class="bg-white p-4 rounded shadow">
+        <p>OT. เกิน 80 ชม.</p>
+        <p id="overOT" class="text-3xl font-bold text-red-600">0</p>
+      </div>
+      <div class="bg-white p-4 rounded shadow">
+        <p>วันลารวม</p>
+        <p id="totalLeave" class="text-3xl font-bold">0</p>
+      </div>
+    </div>
+
+
+    <!-- Export -->
+    <div class="flex gap-3 mb-4">
+      <button onclick="exportExcel()"
+        class="bg-green-600 text-white px-4 py-2 rounded shadow">
+        📥 Export Excel
+      </button>
+      <button onclick="exportPDF()"
+        class="bg-red-600 text-white px-4 py-2 rounded shadow">
+        🖨 Export PDF
+      </button>
+    </div>
+
+
+    <!-- Chart -->
+    <div class="bg-white p-4 rounded shadow mb-6">
+      <canvas id="otChart" height="100"></canvas>
+    </div>
+
+
+    <!-- Table -->
+    <div class="bg-white p-4 rounded shadow">
+      <table class="w-full border">
+        <thead class="bg-gray-200">
+          <tr>
+            <th class="border p-2 text-left">ชื่อ</th>
+            <th class="border p-2 text-left">OT. (ชม.)</th>
+            <th class="border p-2 text-left">วันลา</th>
+          </tr>
+        </thead>
+        <tbody id="table"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+
+<script>
+let chart;
+let refreshInterval = 10000; // ⏱ 10 วินาที
+
+
+// สิ่งที่เปลี่ยน1เริ่ม. นำ URL ที่ได้จากขั้นตอน "Deploy" ใน Google Apps Script มาวางที่นี่
+const scriptURL = "https://script.google.com/macros/s/AKfycbyZHjBuN9sKq6oEFp0L21jCj3BHWVBVKtz10_jNeUHAXT1L-ui-s6G_6ycfX9ZSTqdI/exec"; 
+
+async function loadData() {
+    try {
+        // ดึงข้อมูลผ่าน Fetch API แทน google.script.run
+        const response = await fetch(scriptURL + "?v=" + new Date().getTime());
+        const data = await response.json();
+        
+        // ส่งข้อมูลที่ได้ไปยังฟังก์ชัน render เดิมของคุณ
+        render(data);
+        
+        // เพิ่มการแจ้งเตือนเวลาอัปเดต (ถ้าต้องการ)
+        console.log("Data updated at: " + new Date().toLocaleTimeString());
+    } catch (error) {
+        console.error("Error fetching data:", error);
+    }
+}
+//สิ่งที่เปลี่ยน1จบ
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadData();
+  setInterval(loadData, refreshInterval);
+});
+
+//สิ่งที่เปลี่ยน2เริ่ม
+function render(rawData) {
+  const table = document.getElementById("table");
+  table.innerHTML = "";
+
+  // ถ้าข้อมูลแถวแรกเป็นหัวข้อ (ชื่อ, OT, ลา) ให้ตัดออกด้วย .slice(1)
+  const data = rawData.slice(1); 
+
+  let overOT = 0;
+  let totalLeave = 0;
+  const names = [];
+  const ots = [];
+  const colors = [];
+
+  data.forEach(d => {
+    // สมมติ: คอลัมน์ 0 = ชื่อ, 1 = OT, 2 = วันลา
+    const name = d[0]; 
+    const ot = Number(d[1]) || 0;
+    const leave = Number(d[2]) || 0;
+
+    if (ot > 80) overOT++;
+    totalLeave += leave;
+
+    names.push(name);
+    ots.push(ot);
+
+    colors.push(
+      ot > 80 ? "#dc2626" :
+      ot >= 26 ? "#f97316" :
+      "#9ca3af"
+    );
+
+    table.innerHTML += `
+      <tr>
+        <td class="border p-2">${name}</td>
+        <td class="border p-2 ${
+          ot > 80 ? 'text-red-600 font-bold' :
+          ot >= 26 ? 'text-orange-500 font-bold' : ''
+        }">${ot}</td>
+        <td class="border p-2">${leave}</td>
+      </tr>
+    `;
+  });
+
+  document.getElementById("totalEmp").innerText = data.length;
+  document.getElementById("overOT").innerText = overOT;
+  document.getElementById("totalLeave").innerText = totalLeave.toFixed(1);
+
+  drawChart(names, ots, colors);
+}
+//สิ่งที่เปลี่ยน2จบ
+
+function drawChart(labels, data, colors) {
+  if (chart) chart.destroy();
+
+
+  chart = new Chart(document.getElementById("otChart"), {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: "bar",
+          label: "OT. (ชม.)",
+          data,
+          backgroundColor: colors,
+          order: 2
+        },
+        {
+          type: "line",
+          label: "แนวโน้ม OT.",
+          data,
+          borderColor: "#2563eb",
+          borderWidth: 1,
+          pointRadius: 1,
+          tension: 0.3,
+          fill: false,
+          order: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: true }
+      }
+    }
+  });
+}
+
+
+function filterTable() {
+  const q = search.value.toLowerCase();
+  document.querySelectorAll("#table tr").forEach(r => {
+    r.style.display =
+      r.children[0].innerText.toLowerCase().includes(q)
+        ? "" : "none";
+  });
+}
+
+
+function exportExcel() {
+  const table = document.querySelector("table").outerHTML;
+  const blob = new Blob(['\ufeff' + table], {
+    type: 'application/vnd.ms-excel'
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "OT_Report.xls";
+  a.click();
+}
+
+
+function exportPDF() {
+  window.print();
+}
+</script>
+</body>
+</html>
+
